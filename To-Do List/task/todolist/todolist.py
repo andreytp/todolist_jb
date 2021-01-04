@@ -66,7 +66,7 @@ def print_todos(session, period=None):
             return
 
         for item_index, item in enumerate(task_list):
-            print(f'{item_index + 1}. {item.task}. {item.deadline.strftime("%d %b")}')
+            print(f'{item_index + 1}. {item.task}. {item.deadline.strftime("%-d %b")}')
 
     elif strperiod.upper() == 'WEEK':
         week_list = DatetimeBorder(datetime=datetime.today().date()).week_date_list()
