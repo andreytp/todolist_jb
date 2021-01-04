@@ -299,6 +299,12 @@ files:
     if __name__ == '__main__':
         ToDoList('todolist.todolist').run_tests()
   learner_created: false
+- name: todolist/todo.db
+  visible: true
+  learner_created: true
 feedback_link: https://hyperskill.org/projects/105/stages/572/implement#comment
-status: Unchecked
+status: Failed
+feedback:
+  message: 'Wrong answer in test #5'
+  time: Mon, 04 Jan 2021 14:29:52 UTC
 record: -1

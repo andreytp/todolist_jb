@@ -1,21 +1,35 @@
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Date
 from hstest.check_result import CheckResult
 from hstest.stage_test import StageTest
 from hstest.test_case import TestCase
-from datetime import datetime
+
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, Date
+
+from datetime import datetime, timedelta
 from typing import List
-import os
 import shutil
+import os
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 menu = """
 1) Today's tasks
-2) Add task
+2) Week's tasks
+3) All tasks
+4) Add task
 0) Exit
 """.strip().lower()
+
+weekdays = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday'
+]
 
 
 class ToDoList(StageTest):
@@ -35,8 +49,19 @@ class ToDoList(StageTest):
             TestCase(
                 stdin=[self.clear_table,
                        self.check_empty_list,
+                       self.check_weeks_tasks,
                        self.check_added_task]
 
+            ),
+            TestCase(
+                stdin=[self.add_tasks_with_deadlines,
+                       self.ignore_output,
+                       self.check_weeks_task_output]
+            ),
+            TestCase(
+                stdin=[self.add_tasks_with_deadlines,
+                       '3',
+                       self.check_all_tasks_list]
             )
         ]
 
@@ -45,8 +70,8 @@ class ToDoList(StageTest):
         if menu in reply.lower():
             return CheckResult.correct()
         else:
-            return CheckResult.wrong('Your program doesn\'t show the menu from example.\n'
-                                     ' Make sure you didn\'t print any extra spaces')
+            return CheckResult.wrong('Your program doesn\'t show the menu from example\n'
+                                     '  Make sure you didn\'t print any extra spaces')
 
     def check_db_file(self, reply, attach):
         if not os.path.exists('todo.db'):
@@ -68,7 +93,7 @@ class ToDoList(StageTest):
         correct_columns = ['id', 'INTEGER'], ['task', 'VARCHAR'], ['deadline', 'DATE']
         for column in correct_columns:
             if column not in columns_in_table:
-                return CheckResult.wrong(
+                CheckResult.wrong(
                     'Your table should contain \'{}\' column with \'{}\' type'.format(column[0], column[1]))
         return CheckResult.correct()
 
@@ -79,7 +104,17 @@ class ToDoList(StageTest):
     def check_empty_list(self, output):
         if 'nothing' not in output.lower():
             return CheckResult.wrong('When the to-do list is empty you should output \'Nothing to do!\'')
-        return '2\nFirst task\n2\nSecond task\n1'
+        return '2'
+
+    def check_weeks_tasks(self, output):
+        for day in weekdays:
+            if day not in output.lower():
+                return CheckResult.wrong(
+                    'There is no {} in the output.\nIn week\'s task you should output all the tasks for 7 days.'.format(
+                        day.title()))
+
+        today = datetime.today().date()
+        return '4\nFirst task\n{}\n4\nSecond task\n{}\n1'.format(today, today)
 
     def check_added_task(self, output):
         tasks = self.execute('SELECT * FROM task')
@@ -90,18 +125,120 @@ class ToDoList(StageTest):
             if 'First task' in task:
                 today = datetime.today().date()
                 if not str(today) in task:
-                    return CheckResult.wrong('By default deadline column should be today\' date: {}'.format(today))
+                    return CheckResult.wrong('You saved wrong deadline for the tasks. Expected {}'.format(today))
                 break
         else:
             return CheckResult.wrong('You didn\'t save just added task!')
         for task in tasks:
             task = list(task)
             if 'Second task' in task:
+                today = datetime.today().date()
+                if not str(today) in task:
+                    return CheckResult.wrong('You saved wrong deadline for the tasks. Expected {}'.format(today))
                 break
         else:
             return CheckResult.wrong('You didn\'t save just added task!')
+        self.execute("DELETE FROM task")
         self.is_completed = True
-        return CheckResult.correct()
+        return '0'
+
+    def add_tasks_with_deadlines(self, output):
+        self.execute('DELETE FROM task')
+        first_date = datetime.today().date()
+        second_date = first_date + timedelta(days=3)
+        last_date = first_date + timedelta(days=6)
+        test_input = "4\nDeadline in 3 days\n{}\n4\nDeadline in 6 days\n{}\n4\nDeadline is today\n{}" \
+            .format(second_date, last_date, first_date).strip()
+        return test_input
+
+    def ignore_output(self, output):
+        return '2'
+
+    def check_weeks_task_output(self, output):
+        first_date = datetime.today().date()
+        second_date = first_date + timedelta(days=3)
+        last_date = first_date + timedelta(days=6)
+        first_date_month = first_date.strftime('%b').lower()
+        second_date_month = second_date.strftime('%b').lower()
+        last_date_month = last_date.strftime('%b').lower()
+        first_date_day = first_date.day
+        second_date_day = second_date.day
+        last_date_day = last_date.day
+        first_date_weekday = weekdays[first_date.weekday()]
+        second_date_weekday = weekdays[second_date.weekday()]
+        last_date_weekday = weekdays[last_date.weekday()]
+
+        blocks = output.strip().split('\n\n')
+        if len(blocks) < 7:
+            return CheckResult.wrong('There is should be 7 days when you output the week\'s task.\n'
+                                     'Make sure that you print empty lines before and after output and between each day')
+
+        first_block = blocks[0].lower()
+        second_block = blocks[3].lower()
+        last_block = blocks[6].lower()
+
+        if (first_date_month not in first_block
+                or str(first_date_day) not in first_block
+                or first_date_weekday not in first_block):
+            return CheckResult.wrong('When you output the week\'s tasks the first date should be today\'s date.\n'
+                                     'You should print weekday, number of the day and the short form of the month.')
+
+        if 'deadline is today' not in first_block:
+            return CheckResult.wrong('When you output the week\'s tasks the first date doesn\'t contain added task.')
+
+        if (second_date_month not in second_block
+                or str(second_date_day) not in second_block
+                or second_date_weekday not in second_block):
+            return CheckResult.wrong(
+                'When you output the week\'s tasks the fourth date should be the day that in 4 days from today.\n'
+                'You should print weekday, number of the day and the short form of the month.')
+
+        if 'deadline in 3 days' not in second_block:
+            return CheckResult.wrong(
+                'When you output the week\'s tasks the fourth date doesn\'t contain added task for which deadline is'
+                ' in 4 days.')
+
+        if (last_date_month not in last_block
+                or str(last_date_day) not in last_block
+                or last_date_weekday not in last_block):
+            return CheckResult.wrong(
+                'When you output the week\'s tasks the last date should be the day that in 6 days from today.\n'
+                'You should print weekday, number of the day and the short form of the month.')
+
+        if 'deadline in 6 days' not in last_block:
+            return CheckResult.wrong(
+                'When you output the week\'s tasks the last date doesn\'t contain added task for which deadline is'
+                ' in 6 days.')
+
+        self.is_completed = True
+        return '0'
+
+    def check_all_tasks_list(self, output):
+
+        first_date = datetime.today().date()
+        second_date = first_date + timedelta(days=3)
+        last_date = first_date + timedelta(days=6)
+
+        firs_task = f'Deadline is today. {first_date.day} {first_date.strftime("%b")}'
+        second_task = f'Deadline in 3 days. {second_date.day} {second_date.strftime("%b")}'
+        third_task = f'Deadline in 6 days. {last_date.day} {last_date.strftime("%b")}'
+
+        if firs_task not in output:
+            return CheckResult.wrong(f"Can't find '{firs_task}' task in the all tasks list!")
+        if second_task not in output:
+            return CheckResult.wrong(f"Can't find '{second_task}' task in the all tasks list!")
+        if third_task not in output:
+            return CheckResult.wrong(f"Can't find '{third_task}' task in the all tasks list!")
+
+        first = output.index('Deadline is today')
+        second = output.index('Deadline in 3 days')
+        third = output.index('Deadline in 6 days')
+
+        if first > second or second > third:
+            return CheckResult.wrong("In the all tasks list tasks should be sorted by their deadlines!")
+
+        self.is_completed = True
+        return '0'
 
     def after_all_tests(self):
         if not os.path.exists('todo.db'):
@@ -126,6 +263,7 @@ class ToDoList(StageTest):
             result = db.session.execute(query).fetchall()
         except Exception:
             result = None
+        db.session.commit()
         db.session.close()
         return result
 
