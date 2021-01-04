@@ -370,5 +370,8 @@ files:
         ToDoList('todolist.todolist').run_tests()
   learner_created: false
 feedback_link: https://hyperskill.org/projects/105/stages/573/implement#comment
-status: Unchecked
+status: Solved
+feedback:
+  message: Congratulations!
+  time: Mon, 04 Jan 2021 15:28:59 UTC
 record: -1
